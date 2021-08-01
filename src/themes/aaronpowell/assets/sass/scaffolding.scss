@@ -1,0 +1,37 @@
+@import "./variables.scss";
+
+.container {
+    margin: 0 auto;
+}
+
+@media (max-width: $xsmall) {
+    .container {
+        max-width: 520px;
+        padding: 10px;
+    }
+}
+
+@media (max-width: $small) {
+    .container {
+        max-width: 700px;
+        padding: 10px;
+    }
+}
+
+@media (max-width: $normal) {
+    .container {
+        max-width: 960px;
+    }
+}
+
+@media (max-width: calc(#{$wide} - 1px)) {
+    .container {
+        padding: 10px;
+    }
+}
+
+@media (min-width: $wide) {
+    .container {
+        max-width: 1140px;
+    }
+}
