@@ -1,10 +1,14 @@
-name: Build and Deploy Website
+name: Azure Static Web Apps CI/CD
 env:
-  OUTPUT_PATH: ${{ github.workspace }}/.output
+  OUTPUT_FOLDER: .output
   DOTNET_VERSION: "3.1.100-preview3-014645"
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches:
       - main
 
@@ -55,14 +59,14 @@ jobs:
         working-directory: ./Search
 
       - name: Publish search UI
-        run: dotnet publish --no-build --configuration Release --output ${{ env.OUTPUT_PATH }}
+        run: dotnet publish --no-build --configuration Release --output ${{ github.workspace }}/${{ env.OUTPUT_FOLDER }}
         working-directory: ./Search/Search.Site.UI
 
       - name: Package search UI
         uses: actions/upload-artifact@v1
         with:
           name: search
-          path: ${{ env.OUTPUT_PATH }}/Search.Site.UI/dist/_framework
+          path: ${{ github.workspace }}/${{ env.OUTPUT_FOLDER }}/Search.Site.UI/dist/_framework
 
   build_search_index:
     runs-on: ubuntu-latest
@@ -78,7 +82,7 @@ jobs:
         uses: actions/download-artifact@v1
         with:
           name: json
-          path: ${{ env.OUTPUT_PATH }}
+          path: ${{ github.workspace }}/${{ env.OUTPUT_FOLDER }}
 
       - name: Build search index
         run: dotnet run
@@ -90,46 +94,63 @@ jobs:
           name: search-index
           path: ./Search/Search.IndexBuilder/index.zip
 
-  deploy_website:
-    runs-on: ubuntu-latest
+  build_and_deploy_job:
     needs: [build_search_ui, build_search_index]
-    env:
-      STORAGE_NAME: aaronpowellstaticwebsite
-      CDN_NAME: aaronpowell
-      CDN_PROFILE_NAME: aaronpowell
-      RG_NAME: personal-website
-
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy Job
     steps:
-      - uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
       - name: Download website
         uses: actions/download-artifact@v1
         with:
           name: website
-          path: ${{ env.OUTPUT_PATH }}
+          path: ${{ github.workspace }}/${{ env.OUTPUT_FOLDER }}
 
       - name: Download search UI
         uses: actions/download-artifact@v1
         with:
           name: search
-          path: ${{ env.OUTPUT_PATH }}/_framework
+          path: ${{ github.workspace }}/${{ env.OUTPUT_FOLDER }}/_framework
 
       - name: Download search index
         uses: actions/download-artifact@v1
         with:
           name: search-index
-          path: ${{ env.OUTPUT_PATH }}
+          path: ${{ github.workspace }}/${{ env.OUTPUT_FOLDER }}
+      - name: Build And Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v0.0.1-preview
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_LIVELY_SKY_040BE3C1E }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }} # Used for Github integrations (i.e. PR comments)
+          action: "upload"
+          ###### Repository/Build Configurations - These values can be configured to match you app requirements. ######
+          # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
+          app_location: ${{ env.OUTPUT_FOLDER }} # App source code path
+          api_location: "api" # Api source code path - optional
+          output_location: "" # Built app content directory - optional
+          ###### End of Repository/Build Configurations ######
 
-      - name: Deploy to Azure Storage
-        run: az storage blob upload-batch --source ${{ env.OUTPUT_PATH }} --destination \$web/${GITHUB_SHA} --account-name ${STORAGE_NAME}
+  update_readme:
+    needs: [build_and_deploy_job]
+    runs-on: ubuntu-latest
+    name: Update my readme
+    steps:
+        - name: Workflow Dispatch
+          uses: benc-uk/workflow-dispatch@v1
+          with:
+            workflow: Update
+            repo: aaronpowell/aaronpowell
+            token: ${{ secrets.PERSONAL_TOKEN }}
 
-      - name: Update wasm pieces
-        run: az storage blob update --container-name \$web/${GITHUB_SHA}/_framework/wasm --name "mono.wasm" --content-type "application/wasm" --account-name ${STORAGE_NAME}
-
-      - name: Update CDN endpoint
-        run: az cdn endpoint update --name ${CDN_NAME} --origin-path /${GITHUB_SHA} --profile-name ${CDN_PROFILE_NAME} --resource-group ${RG_NAME}
-
-      - name: Purge CDN
-        run: az cdn endpoint purge --profile-name ${CDN_PROFILE_NAME} --name ${CDN_NAME} --resource-group ${RG_NAME} --content-paths "/*"
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    steps:
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v0.0.1-preview
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_LIVELY_SKY_040BE3C1E }}
+          action: "close"
