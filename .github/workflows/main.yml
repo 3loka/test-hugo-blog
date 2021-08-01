@@ -18,27 +18,28 @@ jobs:
         id: hugo-version
         run: |
           HUGO_VERSION=$(./hugo version | sed -r 's/^.*v([0-9]*\.[0-9]*\.[0-9]*).*/\1/')
-          #echo "::set-output name=HUGO_VERSION::${HUGO_VERSION}"
+          echo "::set-output name=HUGO_VERSION::${HUGO_VERSION}"
 
       - name: Setup Hugo
-        uses: peaceiris/actions-hugo@v2.3.0
+        uses: peaceiris/actions-hugo@v2
         with:
-          hugo-version: '${{ steps.hugo-version.outputs.HUGO_VERSION }}'
+          hugo-version: "${{ steps.hugo-version.outputs.HUGO_VERSION }}"
+          extended: true
 
       - name: Build
-        run: hugo --minify --source ./src --destination ${{ env.OUTPUT_PATH }}
+        run: hugo --minify --source ./src --destination ${{ github.workspace }}/${{ env.OUTPUT_FOLDER }} --config config.toml,config.speaking.toml
 
       - name: Publish website output
         uses: actions/upload-artifact@v1
         with:
           name: website
-          path: ${{ env.OUTPUT_PATH }}
+          path: ${{ github.workspace }}/${{ env.OUTPUT_FOLDER }}
 
       - name: Publish blog json
         uses: actions/upload-artifact@v1
         with:
           name: json
-          path: ${{ env.OUTPUT_PATH }}/index.json
+          path: ${{ github.workspace }}/${{ env.OUTPUT_FOLDER }}/index.json
 
   build_search_ui:
     runs-on: ubuntu-latest
